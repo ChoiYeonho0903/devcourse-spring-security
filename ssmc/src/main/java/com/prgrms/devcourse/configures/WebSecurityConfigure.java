@@ -6,6 +6,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
@@ -40,19 +41,31 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
             .formLogin()
             .defaultSuccessUrl("/")
             .permitAll();
+        /**
+         * 로그아웃 설정
+         */
         http.logout()
             .logoutRequestMatcher(new AntPathRequestMatcher("/logout"))
             .logoutSuccessUrl("/")
             .invalidateHttpSession(true)
             .clearAuthentication(true);
+        /**
+         * remember me 설정
+         */
         http.rememberMe()
             .rememberMeParameter("remember-me")
             .tokenValiditySeconds(300);
+//        /**
+//         * HTTP 요청을 HTTPS 요청으로 리다이렉트
+//         */
 //        http.requiresChannel()
 //            .antMatchers("/api/**").requiresSecure();
         http.anonymous()
             .principal("thisIsAnonymousUser")
             .authorities("ROLE_ANONYMOUS", "ROLE_UNKNOWN");
+        /**
+         * AccessDeniedException 예외에 대한 핸들러 설정
+         */
         http.exceptionHandling()
             .accessDeniedHandler(accessDeniedHandler());
 
@@ -67,6 +80,7 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
             ;
     }
 
+    @Bean
     public AccessDeniedHandler accessDeniedHandler() {
         return (request, response, e) -> {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
