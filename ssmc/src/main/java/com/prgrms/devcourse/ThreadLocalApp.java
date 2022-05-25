@@ -3,6 +3,7 @@ package com.prgrms.devcourse;
 import java.util.concurrent.CompletableFuture;
 
 public class ThreadLocalApp {
+
     final static ThreadLocal<Integer> threadLocalValue = new ThreadLocal<>();
 
     public static void main(String[] args) {
@@ -16,7 +17,6 @@ public class ThreadLocalApp {
             a();
             b();
         });
-
         task.join();
 
     }
