@@ -35,6 +35,10 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
+    public WebSecurityConfigure() {
+        SecurityContextHolder.setStrategyName(SecurityContextHolder.MODE_INHERITABLETHREADLOCAL);
+    }
+
     @Override
     public void configure(WebSecurity web) throws Exception {
         web.ignoring().antMatchers("/asserts/**");
@@ -44,7 +48,7 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
     protected void configure(HttpSecurity http) throws Exception {
         http
             .authorizeRequests()
-            .antMatchers("/me").hasAnyRole("USER", "ADMIN")
+            .antMatchers("/me", "/asyncHello", "/someMethod").hasAnyRole("USER", "ADMIN")
             .antMatchers("/admin").access("hasRole('ADMIN') and isFullyAuthenticated()")
             .anyRequest().permitAll()
             .accessDecisionManager(accessDecisionManager())
