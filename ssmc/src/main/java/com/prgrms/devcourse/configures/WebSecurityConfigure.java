@@ -9,13 +9,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.expression.SecurityExpressionHandler;
+import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.builders.WebSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.FilterInvocation;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
@@ -35,8 +39,9 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
         http
             .authorizeRequests()
             .antMatchers("/me").hasAnyRole("USER", "ADMIN")
-            .antMatchers("/admin").access("hasRole('ADMIN') and isFullyAuthenticated()")
+            .antMatchers("/admin").access("hasRole('ADMIN') and isFullyAuthenticated() and oddAdmin")
             .anyRequest().permitAll()
+            .expressionHandler(securityExpressionHandler())
             .and()
             .formLogin()
             .defaultSuccessUrl("/")
@@ -68,7 +73,16 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
          */
         http.exceptionHandling()
             .accessDeniedHandler(accessDeniedHandler());
-
+        /**
+         * 세션 전략 설정
+         */
+        http
+            .sessionManagement()
+            .sessionFixation().changeSessionId()
+            .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+            .invalidSessionUrl("/") //유효하지 않는 세션 감지시 이동 url
+            .maximumSessions(1)
+            .maxSessionsPreventsLogin(false);
     }
 
     @Override
@@ -76,8 +90,10 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
         auth.inMemoryAuthentication()
             .withUser("user").password("{noop}user123").roles("USER")
             .and()
-            .withUser("admin").password("{noop}admin123").roles("ADMIN")
-            ;
+            .withUser("admin01").password("{noop}admin123").roles("ADMIN")
+            .and()
+            .withUser("admin02").password("{noop}admin123").roles("ADMIN")
+        ;
     }
 
     @Bean
@@ -93,5 +109,12 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
             response.getWriter().close();
         };
 
+    }
+
+    public SecurityExpressionHandler<FilterInvocation> securityExpressionHandler() {
+        return new CustomWebSecurityExpressionHandler(
+            new AuthenticationTrustResolverImpl(),
+            "ROLE_"
+        );
     }
 }
