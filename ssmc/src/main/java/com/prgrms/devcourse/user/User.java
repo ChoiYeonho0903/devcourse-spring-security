@@ -8,6 +8,7 @@ import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @Entity
 @Table(name = "users")
@@ -27,6 +28,12 @@ public class User {
     @JoinColumn(name = "group_id")
     private Group group;
 
+    public void checkPassword(PasswordEncoder passwordEncoder, String credentials) {
+        if (!passwordEncoder.matches(credentials, passwd)) {
+            throw new IllegalArgumentException("Bad credentials");
+        }
+
+    }
     public Long getId() {
         return id;
     }

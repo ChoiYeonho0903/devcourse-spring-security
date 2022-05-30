@@ -1,14 +1,10 @@
 package com.prgrms.devcourse.configures;
 
+import com.prgrms.devcourse.jwt.Jwt;
+import com.prgrms.devcourse.jwt.JwtAuthenticationFilter;
+import com.prgrms.devcourse.jwt.JwtAuthenticationProvider;
 import com.prgrms.devcourse.user.UserService;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ThreadPoolExecutor;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,11 +13,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import org.springframework.security.access.AccessDecisionManager;
-import org.springframework.security.access.AccessDecisionVoter;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.expression.SecurityExpressionHandler;
-import org.springframework.security.access.vote.UnanimousBased;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,15 +24,12 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.jdbc.JdbcDaoImpl;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.task.DelegatingSecurityContextAsyncTaskExecutor;
 import org.springframework.security.web.FilterInvocation;
 import org.springframework.security.web.access.AccessDeniedHandler;
-import org.springframework.security.web.access.expression.WebExpressionVoter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.context.SecurityContextPersistenceFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -47,16 +37,41 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private UserService userService;
+    private final JwtConfigure jwtConfigure;
 
-    @Autowired
-    public void setUserService(UserService userService) {
-        this.userService = userService;
+    public WebSecurityConfigure(JwtConfigure jwtConfigure) {
+        this.jwtConfigure = jwtConfigure;
+        SecurityContextHolder.setStrategyName(SecurityContextHolder.MODE_INHERITABLETHREADLOCAL);
     }
 
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        Jwt jwt = getApplicationContext().getBean(Jwt.class);
+        return new JwtAuthenticationFilter(jwtConfigure.getHeader(), jwt);
+    }
+
+    @Bean
+    public Jwt jwt() {
+        return new Jwt(
+            jwtConfigure.getIssuer(),
+            jwtConfigure.getClientSecret(),
+            jwtConfigure.getExpirySeconds()
+        );
+    }
+
+    @Bean
+    public JwtAuthenticationProvider jwtAuthenticationProvider(Jwt jwt, UserService userService) {
+        return new JwtAuthenticationProvider(jwt, userService);
+    }
+
+    @Autowired
+    public void configureAuthentication(AuthenticationManagerBuilder builder, JwtAuthenticationProvider provider) {
+        builder.authenticationProvider(provider);
+    }
+
+    @Bean
     @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-        auth.userDetailsService(userService);
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean();
     }
 
     //    @Autowired
@@ -90,9 +105,7 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
 //        ;
 //    }
 
-    public WebSecurityConfigure() {
-        SecurityContextHolder.setStrategyName(SecurityContextHolder.MODE_INHERITABLETHREADLOCAL);
-    }
+
 
     @Bean
     @Qualifier("myAsyncTaskExecutor")
@@ -105,7 +118,8 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
     }
 
     @Bean
-    public DelegatingSecurityContextAsyncTaskExecutor taskExecutor(@Qualifier("myAsyncTaskExecutor") AsyncTaskExecutor delegate) {
+    public DelegatingSecurityContextAsyncTaskExecutor taskExecutor(
+        @Qualifier("myAsyncTaskExecutor") AsyncTaskExecutor delegate) {
         return new DelegatingSecurityContextAsyncTaskExecutor(delegate);
     }
 
@@ -118,52 +132,29 @@ public class WebSecurityConfigure extends WebSecurityConfigurerAdapter {
     protected void configure(HttpSecurity http) throws Exception {
         http
             .authorizeRequests()
-            .antMatchers("/api/user/").hasAnyRole("USER", "ADMIN")
-            .antMatchers("/admin").access("hasRole('ADMIN') and isFullyAuthenticated()")
+            .antMatchers("/api/user/me").hasAnyRole("USER", "ADMIN")
             .anyRequest().permitAll()
-//            .accessDecisionManager(accessDecisionManager())
-//            .expressionHandler(securityExpressionHandler())
             .and()
+            .csrf()
+                .disable()
+            .headers()
+                .disable()
             .formLogin()
-            .defaultSuccessUrl("/")
-            .permitAll();
-        /**
-         * 로그아웃 설정
-         */
-        http.logout()
-            .logoutRequestMatcher(new AntPathRequestMatcher("/logout"))
-            .logoutSuccessUrl("/")
-            .invalidateHttpSession(true)
-            .clearAuthentication(true);
-        /**
-         * remember me 설정
-         */
-        http.rememberMe()
-            .rememberMeParameter("remember-me")
-            .tokenValiditySeconds(300);
-//        /**
-//         * HTTP 요청을 HTTPS 요청으로 리다이렉트
-//         */
-//        http.requiresChannel()
-//            .antMatchers("/api/**").requiresSecure();
-        http.anonymous()
-            .principal("thisIsAnonymousUser")
-            .authorities("ROLE_ANONYMOUS", "ROLE_UNKNOWN");
-        /**
-         * AccessDeniedException 예외에 대한 핸들러 설정
-         */
-        http.exceptionHandling()
-            .accessDeniedHandler(accessDeniedHandler());
-        /**
-         * 세션 전략 설정
-         */
-        http
+                .disable()
+            .httpBasic()
+                .disable()
+            .logout()
+                .disable()
             .sessionManagement()
-            .sessionFixation().changeSessionId()
-            .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-            .invalidSessionUrl("/") //유효하지 않는 세션 감지시 이동 url
-            .maximumSessions(1)
-            .maxSessionsPreventsLogin(false);
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            .and()
+        /**
+         * 예외처리 핸들러
+         */
+            .exceptionHandling()
+            .accessDeniedHandler(accessDeniedHandler())
+            .and()
+            .addFilterAfter(jwtAuthenticationFilter(), SecurityContextPersistenceFilter.class);
     }
 
 //    @Override
